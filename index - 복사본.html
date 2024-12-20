@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>급식 달력</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Noto Sans', sans-serif;
+            background-color: #f4f4f4;
+            color: #333;
+            padding: 20px;
+        }
+
+        .container {
+            width: 80%;
+            margin: 0 auto;
+        }
+
+        h1 {
+            text-align: center;
+            margin-bottom: 20px;
+        }
+
+        .calendar {
+            display: grid;
+            grid-template-columns: repeat(7, 1fr);  /* 일~토 7일 기준 */
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+
+        .calendar div {
+            text-align: center;
+            padding: 20px;
+            background-color: #fff;
+            border-radius: 8px;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+            font-size: 16px;
+            color: #333;
+        }
+
+        .calendar div.today {
+            background-color: #ffeb3b;
+            font-weight: bold;
+        }
+
+        .meal-info {
+            margin-top: 10px;
+            font-size: 12px;
+            color: #555;
+        }
+
+        .meal-image {
+            width: 100px;
+            height: 100px;
+            object-fit: cover;
+            margin-top: 10px;
+        }
+
+        .loading {
+            text-align: center;
+            font-size: 18px;
+            color: #555;
+        }
+
+        .month-switcher {
+            text-align: center;
+            margin-top: 20px;
+        }
+
+        .month-button {
+            padding: 10px 20px;
+            margin: 0 10px;
+            background-color: #4caf50;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+
+        .month-button:hover {
+            background-color: #45a049;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- 달력 전환 버튼 -->
+        <div class="month-switcher">
+            <button class="month-button" id="prev-month">이전 달</button>
+            <button class="month-button" id="next-month">다음 달</button>
+        </div>
+
+        <h1 id="calendar-title">2024년 11월 급식 달력</h1>
+        <div class="calendar" id="calendar">
+            <!-- 달력이 여기에 동적으로 생성됩니다. -->
+        </div>
+        <div class="loading" id="loading">급식 정보를 불러오는 중...</div>
+    </div>
+
+    <script>
+        const monthDays = { 1: 31, 2: 29, 3: 31, 4: 30, 5: 31, 6: 30, 7: 31, 8: 31, 9: 30, 10: 31, 11: 30, 12: 31 };
+        let currentYear = 2024;
+        let currentMonth = 11;
+        const calendarDays = [];
+
+        // 급식 이미지 생성 함수 (DeepAI 사용)
+        async function generateMealImage(mealDescription) {
+            const apiKey = 'YOUR_DEEPAI_API_KEY';  // 여기에 자신의 API 키 입력
+            const url = 'https://api.deepai.org/api/text2img';
+
+            const response = await fetch(url, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'api-key': apiKey,
+                },
+                body: JSON.stringify({ text: mealDescription })  // 급식 설명을 AI 모델에 전달
+            });
+
+            const data = await response.json();
+            if (data.output_url) {
+                return data.output_url;  // 생성된 이미지 URL 반환
+            } else {
+                console.error("이미지 생성 실패");
+                return 'images/default_meal.png';  // 실패시 기본 이미지
+            }
+        }
+
+        // 각 달에 대한 날짜 범위 구하는 함수
+        function getMonthDateRange(year, month) {
+            const daysInMonth = monthDays[month];
+            const dateRanges = [];
+
+            for (let i = 1; i <= daysInMonth; i += 5) {
+                const startDate = `${year}${month.toString().padStart(2, '0')}${i.toString().padStart(2, '0')}`;
+                const endDate = `${year}${month.toString().padStart(2, '0')}${Math.min(i + 4, daysInMonth).toString().padStart(2, '0')}`;
+                dateRanges.push({ startDate, endDate });
+            }
+            return dateRanges;
+        }
+
+        // 급식 데이터를 파싱하는 함수 (예시)
+        async function processMealData(rows) {
+            Array.from(rows).forEach(async (row) => {
+                const date = row.getElementsByTagName('MLSV_YMD')[0].textContent;  // 날짜
+                const dish = row.getElementsByTagName('DDISH_NM')[0].textContent;  // 급식 내용
+
+                // AI로 급식 이미지 생성
+                const mealImageUrl = await generateMealImage(dish);
+
+                const day = parseInt(date.slice(-2)); // 날짜 형식 (20241101 -> 1일)
+
+                // 급식 이미지를 해당 날짜에 저장
+                calendarDays[day - 1] = { dish: dish, imageUrl: mealImageUrl };
+            });
+        }
+
+        // 달력 생성 함수
+        function generateCalendar() {
+            const calendarContainer = document.getElementById('calendar');
+            calendarContainer.innerHTML = '';  // 기존 달력 내용 제거
+            const title = document.getElementById('calendar-title');
+            title.textContent = `${currentYear}년 ${currentMonth}월 급식 달력`;
+
+            const daysOfWeek = ['일', '월', '화', '수', '목', '금', '토'];
+            daysOfWeek.forEach(day => {
+                const dayHeader = document.createElement('div');
+                dayHeader.className = 'day';
+                dayHeader.textContent = day;
+                calendarContainer.appendChild(dayHeader);
+            });
+
+            const startDayOfWeek = new Date(currentYear, currentMonth - 1, 1).getDay();
+            for (let i = 0; i < startDayOfWeek; i++) {
+                const emptyCell = document.createElement('div');
+                calendarContainer.appendChild(emptyCell);
+            }
+
+            for (let day = 1; day <= monthDays[currentMonth]; day++) {
+                const dayCell = document.createElement('div');
+                dayCell.textContent = day;
+
+                const mealInfo = calendarDays[day - 1];
+                if (mealInfo) {
+                    dayCell.classList.add('meal');
+                    dayCell.innerHTML += `<div class="meal-info">${mealInfo.dish}</div>`;
+                    dayCell.innerHTML += `<img src="${mealInfo.imageUrl}" class="meal-image" alt="${mealInfo.dish}" />`;
+                }
+
+                const today = new Date();
+                if (today.getFullYear() === currentYear && today.getMonth() + 1 === currentMonth && today.getDate() === day) {
+                    dayCell.classList.add('today');
+                }
+
+                calendarContainer.appendChild(dayCell);
+            }
+        }
+
+        // 이전 달로 이동
+        document.getElementById('prev-month').addEventListener('click', () => {
+            if (currentMonth === 1) {
+                currentMonth = 12;
+                currentYear -= 1;
+            } else {
+                currentMonth -= 1;
+            }
+            calendarDays.length = 0;  // 이전 달 데이터 초기화
+            loadDataForCurrentMonth();
+        });
+
+        // 다음 달로 이동
+        document.getElementById('next-month').addEventListener('click', () => {
+            if (currentMonth === 12) {
+                currentMonth = 1;
+                currentYear += 1;
+            } else {
+                currentMonth += 1;
+            }
+            calendarDays.length = 0;  // 다음 달 데이터 초기화
+            loadDataForCurrentMonth();
+        });
+
+        // 급식 데이터를 불러오는 함수 (5일씩)
+        function loadDataForCurrentMonth() {
+            const dateRanges = getMonthDateRange(currentYear, currentMonth);
+            let currentIndex = 0;
+
+            async function fetchNextRange() {
+                if (currentIndex < dateRanges.length) {
+                    const dateRange = dateRanges[currentIndex];
+                    const url = `https://open.neis.go.kr/hub/mealServiceDietInfo?ATPT_OFCDC_SC_CODE=J10&SD_SCHUL_CODE=7751078&MLSV_FROM_YMD=${dateRange.startDate}&MLSV_TO_YMD=${dateRange.endDate}&pIndex=1&pSize=5`;
+
+                    fetch(url)
+                        .then(response => response.text())  // XML 데이터를 텍스트로 받아옴
+                        .then(xmlText => {
+                            const parser = new DOMParser();
+                            const xmlDoc = parser.parseFromString(xmlText, "application/xml");
+                            const rows = xmlDoc.getElementsByTagName('row');
+                            processMealData(rows);
+                        })
+                        .catch(error => console.error('급식 데이터를 불러오는 데 실패했습니다:', error));
+
+                    currentIndex++;
+                    setTimeout(fetchNextRange, 1);
+                }
+            }
+
+            fetchNextRange();
+        }
+
+        loadDataForCurrentMonth();
+    </script>
+</body>
+</html>

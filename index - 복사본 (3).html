@@ -1,0 +1,257 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>급식 달력</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background-color: #f4f4f4;
+            color: #333;
+            padding: 20px;
+        }
+
+        .container {
+            width: 80%;
+            margin: 0 auto;
+        }
+
+        h1 {
+            text-align: center;
+            margin-bottom: 20px;
+        }
+
+        .calendar {
+            display: grid;
+            grid-template-columns: repeat(7, 1fr);  /* 7열 (일요일부터 토요일까지) */
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+
+        .calendar div {
+            text-align: center;
+            padding: 20px;
+            background-color: #fff;
+            border-radius: 8px;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+            font-size: 16px;
+            color: #333;
+        }
+
+        .calendar div.today {
+            background-color: #ffeb3b;  /* 오늘 날짜 강조 */
+            font-weight: bold;
+        }
+
+        .calendar .day {
+            font-weight: bold;
+        }
+
+        .meal-info {
+            margin-top: 10px;
+            font-size: 12px;
+            color: #555;
+        }
+
+        .loading {
+            text-align: center;
+            font-size: 18px;
+            color: #555;
+        }
+
+        .month-switcher {
+            text-align: center;
+            margin-top: 20px;
+        }
+
+        .month-button {
+            padding: 10px 20px;
+            margin: 0 10px;
+            background-color: #4caf50;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+
+        .month-button:hover {
+            background-color: #45a049;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- 달력 전환 버튼 -->
+        <div class="month-switcher">
+            <button class="month-button" id="prev-month">이전 달</button>
+            <button class="month-button" id="next-month">다음 달</button>
+        </div>
+
+        <h1 id="calendar-title">급식 달력</h1>
+        <div class="calendar" id="calendar">
+            <!-- 달력이 여기에 동적으로 생성됩니다. -->
+        </div>
+        <div class="loading" id="loading">급식 정보를 불러오는 중...</div>
+    </div>
+
+    <script>
+        // 현재 날짜 기준으로 연도와 월 설정
+        const today = new Date();
+        let currentYear = today.getFullYear();
+        let currentMonth = today.getMonth() + 1;  // getMonth()는 0부터 시작하므로 1을 더해줍니다.
+
+        // 월별 날짜 수
+        const monthDays = {
+            1: 31,  // 1월
+            2: 29,  // 2월 (2024년은 윤년이므로 29일)
+            3: 31,  // 3월
+            4: 30,  // 4월
+            5: 31,  // 5월
+            6: 30,  // 6월
+            7: 31,  // 7월
+            8: 31,  // 8월
+            9: 30,  // 9월
+            10: 31, // 10월
+            11: 30, // 11월
+            12: 31  // 12월
+        };
+
+        const calendarDays = []; // 급식 데이터 저장
+
+        // 각 달에 대한 날짜 범위 구하는 함수
+        function getMonthDateRange(year, month) {
+            const daysInMonth = monthDays[month];
+            const dateRanges = [];
+            
+            for (let i = 1; i <= daysInMonth; i += 5) {
+                const startDate = `${year}${month.toString().padStart(2, '0')}${i.toString().padStart(2, '0')}`;
+                const endDate = `${year}${month.toString().padStart(2, '0')}${Math.min(i + 4, daysInMonth).toString().padStart(2, '0')}`;
+                dateRanges.push({ startDate, endDate });
+            }
+            return dateRanges;
+        }
+
+        // 달력을 생성하는 함수
+        function generateCalendar() {
+            const calendarContainer = document.getElementById('calendar');
+            calendarContainer.innerHTML = '';  // 기존 달력 내용 제거
+            const title = document.getElementById('calendar-title');
+            title.textContent = `${currentYear}년 ${currentMonth}월 급식 달력`;
+
+            // 요일 헤더 추가
+            const daysOfWeek = ['일', '월', '화', '수', '목', '금', '토'];
+            daysOfWeek.forEach(day => {
+                const dayHeader = document.createElement('div');
+                dayHeader.className = 'day';
+                dayHeader.textContent = day;
+                calendarContainer.appendChild(dayHeader);
+            });
+
+            // 시작 요일에 맞춰 빈 칸 추가
+            const startDayOfWeek = new Date(currentYear, currentMonth - 1, 1).getDay();
+            for (let i = 0; i < startDayOfWeek; i++) {
+                const emptyCell = document.createElement('div');
+                calendarContainer.appendChild(emptyCell);
+            }
+
+            // 날짜 추가
+            for (let day = 1; day <= monthDays[currentMonth]; day++) {
+                const dayCell = document.createElement('div');
+                dayCell.textContent = day;
+
+                // 급식 내용이 있으면 표시
+                const mealInfo = calendarDays[day - 1];
+                if (mealInfo) {
+                    dayCell.classList.add('meal');
+                    dayCell.innerHTML += `<div class="meal-info">${mealInfo}</div>`;
+                }
+
+                // 오늘 날짜 강조
+                if (today.getFullYear() === currentYear && today.getMonth() + 1 === currentMonth && today.getDate() === day) {
+                    dayCell.classList.add('today');
+                }
+
+                calendarContainer.appendChild(dayCell);
+            }
+        }
+
+        // 급식 정보를 불러오는 함수 (5일씩)
+        function fetchMealData(dateRange) {
+            const url = `https://open.neis.go.kr/hub/mealServiceDietInfo?ATPT_OFCDC_SC_CODE=J10&SD_SCHUL_CODE=7751078&MLSV_FROM_YMD=${dateRange.startDate}&MLSV_TO_YMD=${dateRange.endDate}&pIndex=1&pSize=5`;
+
+            fetch(url)
+                .then(response => response.text())  // XML 데이터를 텍스트로 받아옴
+                .then(xmlText => {
+                    const parser = new DOMParser();
+                    const xmlDoc = parser.parseFromString(xmlText, "application/xml");
+
+                    // <row> 태그가 여러 개일 수 있으므로 모든 <row> 태그를 가져옴
+                    const rows = xmlDoc.getElementsByTagName('row');
+                    if (rows.length > 0) {
+                        processMealData(rows);
+                    }
+
+                    // 데이터가 모두 로드되면 달력을 렌더링
+                    generateCalendar();
+                    document.getElementById('loading').style.display = 'none';  // 로딩 메시지 숨기기
+                })
+                .catch(error => console.error('급식 데이터를 불러오는 데 실패했습니다:', error));
+        }
+
+        // 급식 데이터를 달력에 맞게 처리하는 함수
+        function processMealData(rows) {
+            Array.from(rows).forEach(row => {
+                const date = row.getElementsByTagName('MLSV_YMD')[0].textContent;  // 날짜
+                const dish = row.getElementsByTagName('DDISH_NM')[0].textContent;  // 급식 내용
+
+                const day = parseInt(date.slice(-2)); // 날짜 형식 (20241101 -> 1일)
+
+                // 급식 내용을 해당 날짜에 저장
+                calendarDays[day - 1] = dish;
+            });
+        }
+
+        // 이전 달로 이동
+        document.getElementById('prev-month').addEventListener('click', () => {
+            if (currentMonth === 1) {
+                currentMonth = 12;
+                currentYear -= 1;
+            } else {
+                currentMonth -= 1;
+            }
+            calendarDays.length = 0;  // 이전 달 데이터 초기화
+            loadDataForCurrentMonth();
+        });
+
+        // 다음 달로 이동
+        document.getElementById('next-month').addEventListener('click', () => {
+            if (currentMonth === 12) {
+                currentMonth = 1;
+                currentYear += 1;
+            } else {
+                currentMonth += 1;
+            }
+            calendarDays.length = 0;  // 다음 달 데이터 초기화
+            loadDataForCurrentMonth();
+        });
+
+        // 현재 달의 급식 데이터를 로드하는 함수
+        function loadDataForCurrentMonth() {
+            const dateRanges = getMonthDateRange(currentYear, currentMonth);
+            document.getElementById('loading').style.display = 'block';  // 로딩 메시지 표시
+            dateRanges.forEach(range => {
+                fetchMealData(range);
+            });
+        }
+
+        // 초기 로드
+        loadDataForCurrentMonth();
+    </script>
+</body>
+</html>
